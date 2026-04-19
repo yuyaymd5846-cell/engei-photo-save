@@ -310,10 +310,15 @@ const namePreview = document.getElementById('namePreview');
 const saveBtn = document.getElementById('saveBtn');
 const result = document.getElementById('result');
 
-// Supabase 初期化
+// Supabase 初期化（CDN失敗時もアプリは動く）
 const SUPABASE_URL  = 'https://orcvqcwdfmtuaiwnecdv.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9yY3ZxY3dkZm10dWFpd25lY2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTU3MTQsImV4cCI6MjA5MjA5MTcxNH0.u4bpQV5Ir9NzlcZELUjxBauuXrP5b382YcA-8rRTiKM';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+let supabase = null;
+try {
+  supabase = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON) ?? null;
+} catch(e) {
+  console.error('Supabase init failed:', e);
+}
 
 let selectedFile = null;
 
@@ -510,6 +515,16 @@ saveBtn.addEventListener('click', () => {
       const filename = buildName();
       const cat = category.value;
       const storagePath = `${cat}/${filename}`;
+
+      if (!supabase) {
+        result.style.background = '#fdecea';
+        result.style.color = '#c62828';
+        result.style.display = 'block';
+        result.textContent = 'Supabaseに接続できません。ネットワークを確認してください。';
+        saveBtn.disabled = false;
+        saveBtn.textContent = '☁️ クラウドに保存';
+        return;
+      }
 
       try {
         // Supabase Storage にアップロード
