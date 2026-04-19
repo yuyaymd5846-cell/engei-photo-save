@@ -336,7 +336,7 @@ async function sbInsert(row) {
     headers: { ...SB_HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
     body: JSON.stringify(row)
   });
-  if (!res.ok) console.warn('DB insert failed:', await res.text());
+  if (!res.ok) throw new Error(await res.text());
 }
 
 let selectedFile = null;
