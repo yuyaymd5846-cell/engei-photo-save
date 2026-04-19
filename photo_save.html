@@ -10,7 +10,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="素材保存">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -310,14 +309,28 @@ const namePreview = document.getElementById('namePreview');
 const saveBtn = document.getElementById('saveBtn');
 const result = document.getElementById('result');
 
-// Supabase 初期化（CDN失敗時もアプリは動く）
+// Supabase 設定（fetch直接呼び出し、CDN不要）
 const SUPABASE_URL  = 'https://orcvqcwdfmtuaiwnecdv.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9yY3ZxY3dkZm10dWFpd25lY2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTU3MTQsImV4cCI6MjA5MjA5MTcxNH0.u4bpQV5Ir9NzlcZELUjxBauuXrP5b382YcA-8rRTiKM';
-let supabase = null;
-try {
-  supabase = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON) ?? null;
-} catch(e) {
-  console.error('Supabase init failed:', e);
+const SB_HEADERS = { 'Authorization': `Bearer ${SUPABASE_ANON}`, 'apikey': SUPABASE_ANON };
+
+async function sbUpload(path, blob) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/photos/${path}`, {
+    method: 'PUT',
+    headers: { ...SB_HEADERS, 'Content-Type': 'image/jpeg', 'x-upsert': 'true' },
+    body: blob
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return `${SUPABASE_URL}/storage/v1/object/public/photos/${path}`;
+}
+
+async function sbInsert(row) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/photos`, {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify(row)
+  });
+  if (!res.ok) console.warn('DB insert failed:', await res.text());
 }
 
 let selectedFile = null;
@@ -516,38 +529,9 @@ saveBtn.addEventListener('click', () => {
       const cat = category.value;
       const storagePath = `${cat}/${filename}`;
 
-      if (!supabase) {
-        result.style.background = '#fdecea';
-        result.style.color = '#c62828';
-        result.style.display = 'block';
-        result.textContent = 'Supabaseに接続できません。ネットワークを確認してください。';
-        saveBtn.disabled = false;
-        saveBtn.textContent = '☁️ クラウドに保存';
-        return;
-      }
-
       try {
-        // Supabase Storage にアップロード
-        const { error: uploadError } = await supabase.storage
-          .from('photos')
-          .upload(storagePath, blob, { contentType: 'image/jpeg', upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        // 公開URL取得
-        const { data: urlData } = supabase.storage.from('photos').getPublicUrl(storagePath);
-        const publicUrl = urlData.publicUrl;
-
-        // メタデータをDBに保存
-        const { error: dbError } = await supabase.from('photos').insert({
-          filename,
-          category: cat,
-          description: desc.value.trim(),
-          storage_path: storagePath,
-          public_url: publicUrl,
-        });
-        if (dbError) console.warn('DB insert error:', dbError.message);
-
+        const publicUrl = await sbUpload(storagePath, blob);
+        await sbInsert({ filename, category: cat, description: desc.value.trim(), storage_path: storagePath, public_url: publicUrl });
         result.style.background = '#e8f5e9';
         result.style.color = '#2E7D32';
         result.style.display = 'block';
