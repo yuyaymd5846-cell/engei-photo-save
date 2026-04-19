@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>講演素材 写真保存</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1F3A5F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="素材保存">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+    background: #f5f3ee;
+    color: #1F3A5F;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 48px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 24px;
+    letter-spacing: 0.05em;
+  }
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 2px 12px rgba(31,58,95,0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* モード切替タブ */
+  .mode-tabs {
+    display: flex; gap: 8px; margin-bottom: 4px;
+  }
+  .mode-tab {
+    flex: 1; padding: 9px; border: 1.5px solid #cfd8dc; border-radius: 10px;
+    background: #fff; color: #90a4ae; font-size: 14px; font-weight: bold;
+    cursor: pointer; text-align: center; transition: all 0.15s;
+  }
+  .mode-tab.active {
+    background: #1F3A5F; color: #fff; border-color: #1F3A5F;
+  }
+
+  /* カメラエリア */
+  .camera-area {
+    position: relative; border-radius: 12px; overflow: hidden;
+    background: #000; height: 260px; display: none;
+  }
+  .camera-area video {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .shutter-wrap {
+    position: absolute; bottom: 14px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 20px; align-items: center;
+  }
+  .btn-shutter {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: #fff; border: 4px solid #E8743B;
+    cursor: pointer; transition: transform 0.1s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .btn-shutter:active { transform: scale(0.9); }
+  .btn-shutter svg { width: 28px; height: 28px; color: #E8743B; }
+  .btn-flip {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255,255,255,0.25); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .btn-flip svg { width: 22px; height: 22px; color: #fff; }
+  .camera-error {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: #fff; font-size: 13px; padding: 16px;
+    text-align: center; background: rgba(0,0,0,0.6);
+  }
+
+  /* 写真選択エリア */
+  .photo-area {
+    border: 2px dashed #b0bec5;
+    border-radius: 12px;
+    height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .photo-area:hover { border-color: #E8743B; }
+  .photo-area input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .photo-area img {
+    width: 100%; height: 100%; object-fit: cover; border-radius: 10px;
+  }
+  .photo-placeholder {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    color: #90a4ae; pointer-events: none;
+  }
+  .photo-placeholder svg { width: 48px; height: 48px; }
+  .photo-placeholder span { font-size: 14px; }
+  .paste-hint { font-size: 12px; color: #b0bec5; margin-top: 2px; }
+  .folder-row { display: flex; gap: 8px; align-items: center; }
+  .folder-display {
+    flex: 1; padding: 10px 14px; border: 1.5px solid #cfd8dc;
+    border-radius: 10px; font-size: 13px; color: #455a64;
+    background: #f5f3ee; word-break: break-all;
+  }
+  .folder-display.selected { color: #2E7D32; border-color: #2E7D32; background: #f1f8f1; }
+  .btn-folder {
+    background: #1F3A5F; color: #fff; border: none; border-radius: 10px;
+    padding: 10px 16px; font-size: 14px; font-weight: bold; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .btn-folder:hover { background: #162d4a; }
+
+  label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #1F3A5F;
+    display: block;
+    margin-bottom: 6px;
+  }
+  select, input[type=text] {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #cfd8dc;
+    border-radius: 10px;
+    font-size: 16px;
+    color: #1F3A5F;
+    background: #fff;
+    appearance: none;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  select:focus, input[type=text]:focus { border-color: #E8743B; }
+
+  .preview-name {
+    background: #f0f4f8;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #455a64;
+    word-break: break-all;
+    min-height: 38px;
+  }
+  .preview-name span { color: #E8743B; font-weight: bold; }
+
+  .size-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .size-row select { flex: 1; }
+  .size-note { font-size: 12px; color: #90a4ae; white-space: nowrap; }
+
+  .btn {
+    background: #E8743B;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 17px;
+    font-weight: bold;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.2s, transform 0.1s;
+    letter-spacing: 0.05em;
+  }
+  .btn:hover { background: #d4622c; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { background: #b0bec5; cursor: not-allowed; }
+
+  .hint {
+    font-size: 12px;
+    color: #90a4ae;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .result {
+    display: none;
+    background: #e8f5e9;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 13px;
+    color: #2E7D32;
+    text-align: center;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+<h1>📸 講演素材 写真保存</h1>
+
+<div class="card">
+
+  <!-- モード切替 -->
+  <div>
+    <div class="mode-tabs">
+      <button class="mode-tab active" id="tabSelect" type="button">📂 選択・ペースト</button>
+      <button class="mode-tab" id="tabCamera" type="button">📷 カメラで撮る</button>
+    </div>
+
+    <!-- 選択モード -->
+    <div id="modeSelect">
+      <div class="photo-area" id="photoArea">
+        <input type="file" accept="image/*" id="fileInput">
+        <div class="photo-placeholder" id="placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 9a2 2 0 012-2h.172a2 2 0 001.414-.586l.828-.828A2 2 0 018.828 5h6.344a2 2 0 011.414.586l.828.828A2 2 0 0018.828 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+            <circle cx="12" cy="13" r="3"/>
+          </svg>
+          <span>タップして写真を選ぶ</span>
+          <span class="paste-hint">またはここで Ctrl+V / ⌘V でペースト</span>
+        </div>
+        <img id="preview" style="display:none" alt="preview">
+      </div>
+    </div>
+
+    <!-- カメラモード -->
+    <div class="camera-area" id="modeCamera">
+      <video id="cameraVideo" autoplay playsinline muted></video>
+      <div class="shutter-wrap">
+        <button class="btn-flip" id="btnFlip" type="button" title="カメラ切替">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+        <button class="btn-shutter" id="btnShutter" type="button">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="8"/>
+          </svg>
+        </button>
+        <div style="width:40px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- カテゴリ -->
+  <div>
+    <label>カテゴリ</label>
+    <select id="category">
+      <option value="">--- 選んでください ---</option>
+      <option value="作業風景">作業風景</option>
+      <option value="品種">品種</option>
+      <option value="改善">改善</option>
+      <option value="生育風景">生育風景</option>
+      <option value="パック花">パック花</option>
+      <option value="アレンジ">アレンジ</option>
+    </select>
+  </div>
+
+  <!-- 説明名 -->
+  <div>
+    <label>説明名 <span style="font-weight:normal;color:#90a4ae">（例: 収穫前ばらし作業_before）</span></label>
+    <input type="text" id="desc" placeholder="内容がわかる短い名前">
+  </div>
+
+  <!-- リサイズ設定 -->
+  <div>
+    <label>書き出しサイズ</label>
+    <div class="size-row">
+      <select id="maxSize">
+        <option value="1600">1600px（標準・推奨）</option>
+        <option value="1200">1200px（小さめ）</option>
+        <option value="2400">2400px（高解像度）</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ファイル名プレビュー -->
+  <div>
+    <label>保存ファイル名（プレビュー）</label>
+    <div class="preview-name" id="namePreview">カテゴリと説明名を入力すると表示されます</div>
+  </div>
+
+  <!-- 保存先フォルダ -->
+  <div id="folderSection">
+    <label>保存先フォルダ <span style="font-weight:normal;color:#90a4ae">（Chrome/Edge のみ）</span></label>
+    <div class="folder-row">
+      <div class="folder-display" id="folderDisplay">未選択 — 通常ダウンロードで保存</div>
+      <button class="btn-folder" id="folderBtn" type="button">選択</button>
+    </div>
+  </div>
+
+  <!-- 保存ボタン -->
+  <button class="btn" id="saveBtn" disabled>保存</button>
+
+  <div class="result" id="result"></div>
+
+  <p class="hint" id="hintText">
+    保存先フォルダ：<code>assets/photos/{カテゴリ}/</code>
+  </p>
+
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const placeholder = document.getElementById('placeholder');
+const category = document.getElementById('category');
+const desc = document.getElementById('desc');
+const maxSize = document.getElementById('maxSize');
+const namePreview = document.getElementById('namePreview');
+const saveBtn = document.getElementById('saveBtn');
+const result = document.getElementById('result');
+const folderBtn = document.getElementById('folderBtn');
+const folderDisplay = document.getElementById('folderDisplay');
+const hintText = document.getElementById('hintText');
+
+let rootDirHandle = null;
+const supportsFS = 'showDirectoryPicker' in window;
+
+if (!supportsFS) {
+  document.getElementById('folderSection').style.display = 'none';
+}
+
+folderBtn.addEventListener('click', async () => {
+  try {
+    rootDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    folderDisplay.textContent = '📁 ' + rootDirHandle.name;
+    folderDisplay.classList.add('selected');
+    hintText.innerHTML = `保存先：<code>${rootDirHandle.name}/assets/photos/{カテゴリ}/</code>（自動作成）`;
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error(e);
+  }
+});
+
+let selectedFile = null;
+
+// ---- カメラモード ----
+const tabSelect   = document.getElementById('tabSelect');
+const tabCamera   = document.getElementById('tabCamera');
+const modeSelect  = document.getElementById('modeSelect');
+const modeCamera  = document.getElementById('modeCamera');
+const cameraVideo = document.getElementById('cameraVideo');
+const btnShutter  = document.getElementById('btnShutter');
+const btnFlip     = document.getElementById('btnFlip');
+let cameraStream  = null;
+let facingMode    = 'environment'; // 背面カメラ優先
+
+async function startCamera() {
+  stopCamera();
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    cameraVideo.srcObject = cameraStream;
+  } catch (e) {
+    const err = document.createElement('div');
+    err.className = 'camera-error';
+    err.textContent = 'カメラへのアクセスが許可されていません。ブラウザの設定を確認してください。';
+    modeCamera.appendChild(err);
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  cameraVideo.srcObject = null;
+  // エラーメッセージがあれば消す
+  modeCamera.querySelectorAll('.camera-error').forEach(el => el.remove());
+}
+
+function setImageFromBlob(blob) {
+  selectedFile = new File([blob], 'camera.jpg', { type: 'image/jpeg' });
+  const url = URL.createObjectURL(blob);
+  preview.src = url;
+  preview.style.display = 'block';
+  placeholder.style.display = 'none';
+  updatePreview();
+}
+
+tabCamera.addEventListener('click', () => {
+  tabCamera.classList.add('active');
+  tabSelect.classList.remove('active');
+  modeSelect.style.display = 'none';
+  modeCamera.style.display = 'block';
+  startCamera();
+});
+
+tabSelect.addEventListener('click', () => {
+  tabSelect.classList.add('active');
+  tabCamera.classList.remove('active');
+  modeCamera.style.display = 'none';
+  modeSelect.style.display = 'block';
+  stopCamera();
+});
+
+btnFlip.addEventListener('click', () => {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  startCamera();
+});
+
+btnShutter.addEventListener('click', () => {
+  if (!cameraStream) return;
+  const canvas = document.createElement('canvas');
+  canvas.width  = cameraVideo.videoWidth;
+  canvas.height = cameraVideo.videoHeight;
+  canvas.getContext('2d').drawImage(cameraVideo, 0, 0);
+  canvas.toBlob(blob => {
+    setImageFromBlob(blob);
+    // 撮影後は選択モードに切り替えてプレビュー表示
+    tabSelect.click();
+  }, 'image/jpeg', 0.92);
+});
+
+// LocalStorage — 前回の設定を復元
+const LS_KEY = 'photoSave_prefs';
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    if (p.category) category.value = p.category;
+    if (p.maxSize)  maxSize.value  = p.maxSize;
+  } catch(e) {}
+}
+function savePrefs() {
+  localStorage.setItem(LS_KEY, JSON.stringify({
+    category: category.value,
+    maxSize:  maxSize.value
+  }));
+}
+loadPrefs();
+category.addEventListener('change', savePrefs);
+maxSize.addEventListener('change',  savePrefs);
+
+// 今日の日付
+function today() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+// ファイル名生成
+function buildName() {
+  const cat = category.value;
+  const d = desc.value.trim().replace(/\s+/g, '_');
+  const date = today();
+  if (!cat) return null;
+  const parts = [cat, d, date].filter(Boolean);
+  return parts.join('_') + '.jpg';
+}
+
+// プレビュー更新
+function updatePreview() {
+  const name = buildName();
+  if (name) {
+    namePreview.innerHTML = `<span>${name}</span>`;
+  } else {
+    namePreview.textContent = 'カテゴリと説明名を入力すると表示されます';
+  }
+  saveBtn.disabled = !(selectedFile && category.value);
+  result.style.display = 'none';
+}
+
+// 写真選択
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  selectedFile = file;
+  const url = URL.createObjectURL(file);
+  preview.src = url;
+  preview.style.display = 'block';
+  placeholder.style.display = 'none';
+  updatePreview();
+});
+
+category.addEventListener('change', updatePreview);
+desc.addEventListener('input', updatePreview);
+maxSize.addEventListener('change', updatePreview);
+
+// クリップボードからペースト（Ctrl+V / ⌘V）
+document.addEventListener('paste', e => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (!file) continue;
+      selectedFile = file;
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      preview.style.display = 'block';
+      placeholder.style.display = 'none';
+      updatePreview();
+      break;
+    }
+  }
+});
+
+// ダウンロード処理
+saveBtn.addEventListener('click', () => {
+  if (!selectedFile || !category.value) return;
+  saveBtn.disabled = true;
+  saveBtn.textContent = '処理中…';
+  result.style.display = 'none';
+
+  const img = new Image();
+  const url = URL.createObjectURL(selectedFile);
+  img.onload = () => {
+    const max = parseInt(maxSize.value);
+    let w = img.width, h = img.height;
+
+    // リサイズ（長辺がmax以下になるよう）
+    if (w > max || h > max) {
+      if (w >= h) { h = Math.round(h * max / w); w = max; }
+      else        { w = Math.round(w * max / h); h = max; }
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+
+    canvas.toBlob(async blob => {
+      const filename = buildName();
+      const cat = category.value;
+
+      if (rootDirHandle) {
+        // File System Access API — フォルダに直接保存
+        try {
+          // assets/photos/{カテゴリ}/ を再帰的に取得・作成
+          const assetsDir = await rootDirHandle.getDirectoryHandle('assets', { create: true });
+          const photosDir = await assetsDir.getDirectoryHandle('photos', { create: true });
+          const catDir    = await photosDir.getDirectoryHandle(cat, { create: true });
+          const fileHandle = await catDir.getFileHandle(filename, { create: true });
+          const writable   = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          result.style.display = 'block';
+          result.innerHTML = `✅ 保存しました！<br><code>${rootDirHandle.name}/assets/photos/${cat}/${filename}</code>`;
+        } catch (e) {
+          result.style.display = 'block';
+          result.style.background = '#fdecea';
+          result.style.color = '#c62828';
+          result.textContent = '保存に失敗しました: ' + e.message;
+        }
+      } else {
+        // フォールバック — 通常ダウンロード
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        result.style.display = 'block';
+        result.innerHTML = `✅ ダウンロードしました！<br><code>${filename}</code><br>OneDriveの <code>assets/photos/${cat}/</code> に移動してください`;
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = '保存';
+    }, 'image/jpeg', 0.82);
+  };
+  img.src = url;
+});
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+}
+</script>
+</body>
+</html>
