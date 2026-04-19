@@ -555,15 +555,30 @@ saveBtn.addEventListener('click', () => {
           result.style.color = '#c62828';
           result.textContent = '保存に失敗しました: ' + e.message;
         }
+      } else if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'image/jpeg' })] })) {
+        // iOS Safari — Web Share API で共有シートを開く
+        try {
+          const file = new File([blob], filename, { type: 'image/jpeg' });
+          await navigator.share({ files: [file], title: filename });
+          result.style.display = 'block';
+          result.innerHTML = `✅ 共有シートを開きました<br>「ファイルに保存」→ OneDrive の<br><code>assets/photos/${cat}/</code> を選んでください`;
+        } catch (e) {
+          if (e.name !== 'AbortError') {
+            result.style.display = 'block';
+            result.style.background = '#fdecea';
+            result.style.color = '#c62828';
+            result.textContent = '共有に失敗しました: ' + e.message;
+          }
+        }
       } else {
-        // フォールバック — 通常ダウンロード
+        // その他 — 通常ダウンロード
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
         result.style.display = 'block';
-        result.innerHTML = `✅ ダウンロードしました！<br><code>${filename}</code><br>OneDriveの <code>assets/photos/${cat}/</code> に移動してください`;
+        result.innerHTML = `✅ ダウンロードしました！<br><code>${filename}</code>`;
       }
 
       saveBtn.disabled = false;
