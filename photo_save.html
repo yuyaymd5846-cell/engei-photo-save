@@ -309,20 +309,25 @@ const namePreview = document.getElementById('namePreview');
 const saveBtn = document.getElementById('saveBtn');
 const result = document.getElementById('result');
 
+// カテゴリ → ASCII変換（Supabase Storageはマルチバイト非対応）
+const CATEGORY_ASCII = {
+  '作業風景': 'sakugyo', '品種': 'hinshu', '改善': 'kaizen',
+  '生育風景': 'seiiku',  'パック花': 'packka', 'アレンジ': 'arrange'
+};
+
 // Supabase 設定（fetch直接呼び出し、CDN不要）
 const SUPABASE_URL  = 'https://orcvqcwdfmtuaiwnecdv.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9yY3ZxY3dkZm10dWFpd25lY2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTU3MTQsImV4cCI6MjA5MjA5MTcxNH0.u4bpQV5Ir9NzlcZELUjxBauuXrP5b382YcA-8rRTiKM';
 const SB_HEADERS = { 'Authorization': `Bearer ${SUPABASE_ANON}`, 'apikey': SUPABASE_ANON };
 
 async function sbUpload(path, blob) {
-  const encoded = path.split('/').map(encodeURIComponent).join('/');
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/photos/${encoded}`, {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/photos/${path}`, {
     method: 'PUT',
     headers: { ...SB_HEADERS, 'Content-Type': 'image/jpeg', 'x-upsert': 'true' },
     body: blob
   });
   if (!res.ok) throw new Error(await res.text());
-  return `${SUPABASE_URL}/storage/v1/object/public/photos/${encoded}`;
+  return `${SUPABASE_URL}/storage/v1/object/public/photos/${path}`;
 }
 
 async function sbInsert(row) {
@@ -528,7 +533,11 @@ saveBtn.addEventListener('click', () => {
     canvas.toBlob(async blob => {
       const filename = buildName();
       const cat = category.value;
-      const storagePath = `${cat}/${filename}`;
+      const catAscii = CATEGORY_ASCII[cat] || cat;
+      // ストレージパスはASCIIのみ（日本語説明はDBに保存）
+      const ts = Date.now();
+      const descAscii = desc.value.trim().replace(/[^\w\-]/g, '_') || 'photo';
+      const storagePath = `${catAscii}/${catAscii}_${descAscii}_${ts}.jpg`;
 
       try {
         console.log('uploading:', storagePath);
@@ -538,7 +547,7 @@ saveBtn.addEventListener('click', () => {
         result.style.background = '#e8f5e9';
         result.style.color = '#2E7D32';
         result.style.display = 'block';
-        result.innerHTML = `✅ 保存完了！<br><code>${storagePath}</code>`;
+        result.innerHTML = `✅ 保存完了！<br><small>${cat} → <code>${storagePath}</code></small>`;
       } catch (e) {
         console.error('save error:', e);
         result.style.background = '#fdecea';
