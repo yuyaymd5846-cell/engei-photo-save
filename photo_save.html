@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="素材保存">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -289,23 +290,12 @@
     <div class="preview-name" id="namePreview">カテゴリと説明名を入力すると表示されます</div>
   </div>
 
-  <!-- 保存先フォルダ -->
-  <div id="folderSection">
-    <label>保存先フォルダ <span style="font-weight:normal;color:#90a4ae">（Chrome/Edge のみ）</span></label>
-    <div class="folder-row">
-      <div class="folder-display" id="folderDisplay">未選択 — 通常ダウンロードで保存</div>
-      <button class="btn-folder" id="folderBtn" type="button">選択</button>
-    </div>
-  </div>
-
   <!-- 保存ボタン -->
-  <button class="btn" id="saveBtn" disabled>保存</button>
+  <button class="btn" id="saveBtn" disabled>☁️ クラウドに保存</button>
 
   <div class="result" id="result"></div>
 
-  <p class="hint" id="hintText">
-    保存先フォルダ：<code>assets/photos/{カテゴリ}/</code>
-  </p>
+  <p class="hint">Supabase Storageに保存 → どの端末・Claude Codeからも参照可能</p>
 
 </div>
 
@@ -319,27 +309,11 @@ const maxSize = document.getElementById('maxSize');
 const namePreview = document.getElementById('namePreview');
 const saveBtn = document.getElementById('saveBtn');
 const result = document.getElementById('result');
-const folderBtn = document.getElementById('folderBtn');
-const folderDisplay = document.getElementById('folderDisplay');
-const hintText = document.getElementById('hintText');
 
-let rootDirHandle = null;
-const supportsFS = 'showDirectoryPicker' in window;
-
-if (!supportsFS) {
-  document.getElementById('folderSection').style.display = 'none';
-}
-
-folderBtn.addEventListener('click', async () => {
-  try {
-    rootDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    folderDisplay.textContent = '📁 ' + rootDirHandle.name;
-    folderDisplay.classList.add('selected');
-    hintText.innerHTML = `保存先：<code>${rootDirHandle.name}/assets/photos/{カテゴリ}/</code>（自動作成）`;
-  } catch (e) {
-    if (e.name !== 'AbortError') console.error(e);
-  }
-});
+// Supabase 初期化
+const SUPABASE_URL  = 'https://orcvqcwdfmtuaiwnecdv.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9yY3ZxY3dkZm10dWFpd25lY2R2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTU3MTQsImV4cCI6MjA5MjA5MTcxNH0.u4bpQV5Ir9NzlcZELUjxBauuXrP5b382YcA-8rRTiKM';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 let selectedFile = null;
 
@@ -535,54 +509,43 @@ saveBtn.addEventListener('click', () => {
     canvas.toBlob(async blob => {
       const filename = buildName();
       const cat = category.value;
+      const storagePath = `${cat}/${filename}`;
 
-      if (rootDirHandle) {
-        // File System Access API — フォルダに直接保存
-        try {
-          // assets/photos/{カテゴリ}/ を再帰的に取得・作成
-          const assetsDir = await rootDirHandle.getDirectoryHandle('assets', { create: true });
-          const photosDir = await assetsDir.getDirectoryHandle('photos', { create: true });
-          const catDir    = await photosDir.getDirectoryHandle(cat, { create: true });
-          const fileHandle = await catDir.getFileHandle(filename, { create: true });
-          const writable   = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          result.style.display = 'block';
-          result.innerHTML = `✅ 保存しました！<br><code>${rootDirHandle.name}/assets/photos/${cat}/${filename}</code>`;
-        } catch (e) {
-          result.style.display = 'block';
-          result.style.background = '#fdecea';
-          result.style.color = '#c62828';
-          result.textContent = '保存に失敗しました: ' + e.message;
-        }
-      } else if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'image/jpeg' })] })) {
-        // iOS Safari — Web Share API で共有シートを開く
-        try {
-          const file = new File([blob], filename, { type: 'image/jpeg' });
-          await navigator.share({ files: [file], title: filename });
-          result.style.display = 'block';
-          result.innerHTML = `✅ 共有シートを開きました<br>「ファイルに保存」→ OneDrive の<br><code>assets/photos/${cat}/</code> を選んでください`;
-        } catch (e) {
-          if (e.name !== 'AbortError') {
-            result.style.display = 'block';
-            result.style.background = '#fdecea';
-            result.style.color = '#c62828';
-            result.textContent = '共有に失敗しました: ' + e.message;
-          }
-        }
-      } else {
-        // その他 — 通常ダウンロード
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
+      try {
+        // Supabase Storage にアップロード
+        const { error: uploadError } = await supabase.storage
+          .from('photos')
+          .upload(storagePath, blob, { contentType: 'image/jpeg', upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        // 公開URL取得
+        const { data: urlData } = supabase.storage.from('photos').getPublicUrl(storagePath);
+        const publicUrl = urlData.publicUrl;
+
+        // メタデータをDBに保存
+        const { error: dbError } = await supabase.from('photos').insert({
+          filename,
+          category: cat,
+          description: desc.value.trim(),
+          storage_path: storagePath,
+          public_url: publicUrl,
+        });
+        if (dbError) console.warn('DB insert error:', dbError.message);
+
+        result.style.background = '#e8f5e9';
+        result.style.color = '#2E7D32';
         result.style.display = 'block';
-        result.innerHTML = `✅ ダウンロードしました！<br><code>${filename}</code>`;
+        result.innerHTML = `✅ 保存完了！<br><code>${storagePath}</code>`;
+      } catch (e) {
+        result.style.background = '#fdecea';
+        result.style.color = '#c62828';
+        result.style.display = 'block';
+        result.textContent = '保存に失敗しました: ' + e.message;
       }
 
       saveBtn.disabled = false;
-      saveBtn.textContent = '保存';
+      saveBtn.textContent = '☁️ クラウドに保存';
     }, 'image/jpeg', 0.82);
   };
   img.src = url;
