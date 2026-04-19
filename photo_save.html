@@ -315,13 +315,14 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const SB_HEADERS = { 'Authorization': `Bearer ${SUPABASE_ANON}`, 'apikey': SUPABASE_ANON };
 
 async function sbUpload(path, blob) {
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/photos/${path}`, {
+  const encoded = path.split('/').map(encodeURIComponent).join('/');
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/photos/${encoded}`, {
     method: 'PUT',
     headers: { ...SB_HEADERS, 'Content-Type': 'image/jpeg', 'x-upsert': 'true' },
     body: blob
   });
   if (!res.ok) throw new Error(await res.text());
-  return `${SUPABASE_URL}/storage/v1/object/public/photos/${path}`;
+  return `${SUPABASE_URL}/storage/v1/object/public/photos/${encoded}`;
 }
 
 async function sbInsert(row) {
