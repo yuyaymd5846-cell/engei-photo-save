@@ -531,17 +531,20 @@ saveBtn.addEventListener('click', () => {
       const storagePath = `${cat}/${filename}`;
 
       try {
+        console.log('uploading:', storagePath);
         const publicUrl = await sbUpload(storagePath, blob);
+        console.log('upload ok, url:', publicUrl);
         await sbInsert({ filename, category: cat, description: desc.value.trim(), storage_path: storagePath, public_url: publicUrl });
         result.style.background = '#e8f5e9';
         result.style.color = '#2E7D32';
         result.style.display = 'block';
         result.innerHTML = `✅ 保存完了！<br><code>${storagePath}</code>`;
       } catch (e) {
+        console.error('save error:', e);
         result.style.background = '#fdecea';
         result.style.color = '#c62828';
         result.style.display = 'block';
-        result.textContent = '保存に失敗しました: ' + e.message;
+        result.innerHTML = `保存に失敗しました:<br><small>${e.message}</small>`;
       }
 
       saveBtn.disabled = false;
