@@ -201,6 +201,59 @@
     text-align: center;
     font-weight: bold;
   }
+
+  /* uploadContent はカード内の縦積みを維持 */
+  #uploadContent { display: flex; flex-direction: column; gap: 20px; }
+
+  /* ギャラリーフィルター */
+  .gallery-filter {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;
+  }
+  .filter-chip {
+    padding: 6px 14px; border-radius: 20px;
+    border: 1.5px solid #cfd8dc; background: #fff;
+    color: #455a64; font-size: 13px; cursor: pointer; transition: all 0.15s;
+  }
+  .filter-chip.active { background: #1F3A5F; color: #fff; border-color: #1F3A5F; }
+
+  /* サムネイルグリッド */
+  .gallery-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  }
+  .gallery-thumb {
+    aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+    cursor: pointer; background: #e0e0e0;
+  }
+  .gallery-thumb img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: transform 0.15s;
+  }
+  .gallery-thumb:active img { transform: scale(0.94); }
+  .gallery-empty, .gallery-loading {
+    text-align: center; color: #90a4ae; padding: 48px 0;
+    font-size: 14px; grid-column: 1/-1;
+  }
+
+  /* ライトボックス */
+  .lightbox {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.9); z-index: 1000;
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; padding: 20px;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 100%; max-height: 78vh;
+    border-radius: 10px; object-fit: contain;
+  }
+  .lightbox-info {
+    color: #fff; font-size: 12px; text-align: center; opacity: 0.8; line-height: 1.5;
+  }
+  .lightbox-close {
+    position: absolute; top: 14px; right: 18px;
+    background: none; border: none; color: #fff;
+    font-size: 30px; cursor: pointer; line-height: 1;
+  }
 </style>
 </head>
 <body>
@@ -210,12 +263,13 @@
 <div class="card">
 
   <!-- モード切替 -->
-  <div>
-    <div class="mode-tabs">
-      <button class="mode-tab active" id="tabSelect" type="button">📂 選択・ペースト</button>
-      <button class="mode-tab" id="tabCamera" type="button">📷 カメラで撮る</button>
-    </div>
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="tabSelect" type="button">📂 選択</button>
+    <button class="mode-tab" id="tabCamera" type="button">📷 撮る</button>
+    <button class="mode-tab" id="tabGallery" type="button">🖼️ 閲覧</button>
+  </div>
 
+  <div id="uploadContent">
     <!-- 選択モード -->
     <div id="modeSelect">
       <div class="photo-area" id="photoArea">
@@ -249,9 +303,8 @@
         <div style="width:40px"></div>
       </div>
     </div>
-  </div>
 
-  <!-- カテゴリ -->
+    <!-- カテゴリ -->
   <div>
     <label>カテゴリ</label>
     <select id="category">
@@ -262,6 +315,7 @@
       <option value="生育風景">生育風景</option>
       <option value="パック花">パック花</option>
       <option value="アレンジ">アレンジ</option>
+      <option value="その他">その他</option>
     </select>
   </div>
 
@@ -295,7 +349,23 @@
   <div class="result" id="result"></div>
 
   <p class="hint">Supabase Storageに保存 → どの端末・Claude Codeからも参照可能</p>
+  </div><!-- /uploadContent -->
 
+  <!-- ギャラリーセクション -->
+  <div id="gallerySection" style="display:none">
+    <div class="gallery-filter" id="galleryFilter"></div>
+    <div class="gallery-grid" id="galleryGrid">
+      <div class="gallery-loading">読み込み中…</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ライトボックス -->
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightboxClose">✕</button>
+  <img id="lightboxImg" src="" alt="">
+  <div class="lightbox-info" id="lightboxInfo"></div>
 </div>
 
 <script>
@@ -312,7 +382,7 @@ const result = document.getElementById('result');
 // カテゴリ → ASCII変換（Supabase Storageはマルチバイト非対応）
 const CATEGORY_ASCII = {
   '作業風景': 'sakugyo', '品種': 'hinshu', '改善': 'kaizen',
-  '生育風景': 'seiiku',  'パック花': 'packka', 'アレンジ': 'arrange'
+  '生育風景': 'seiiku',  'パック花': 'packka', 'アレンジ': 'arrange', 'その他': 'sonota'
 };
 
 // Supabase 設定（fetch直接呼び出し、CDN不要）
@@ -562,6 +632,106 @@ saveBtn.addEventListener('click', () => {
   };
   img.src = url;
 });
+
+// ---- ギャラリーモード ----
+const tabGallery     = document.getElementById('tabGallery');
+const uploadContent  = document.getElementById('uploadContent');
+const gallerySection = document.getElementById('gallerySection');
+const galleryFilter  = document.getElementById('galleryFilter');
+const galleryGrid    = document.getElementById('galleryGrid');
+const lightbox       = document.getElementById('lightbox');
+const lightboxImg    = document.getElementById('lightboxImg');
+const lightboxInfo   = document.getElementById('lightboxInfo');
+const lightboxClose  = document.getElementById('lightboxClose');
+
+const GALLERY_CATS = ['すべて', '作業風景', '品種', '改善', '生育風景', 'パック花', 'アレンジ', 'その他'];
+let galleryPhotos = [];
+let activeFilter  = 'すべて';
+
+async function sbFetchPhotos() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/photos?select=*&order=created_at.desc&limit=300`,
+    { headers: SB_HEADERS }
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function renderFilter() {
+  galleryFilter.innerHTML = '';
+  GALLERY_CATS.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-chip' + (cat === activeFilter ? ' active' : '');
+    btn.textContent = cat;
+    btn.addEventListener('click', () => {
+      activeFilter = cat;
+      renderFilter();
+      renderGrid();
+    });
+    galleryFilter.appendChild(btn);
+  });
+}
+
+function renderGrid() {
+  const photos = activeFilter === 'すべて'
+    ? galleryPhotos
+    : galleryPhotos.filter(p => p.category === activeFilter);
+  galleryGrid.innerHTML = '';
+  if (photos.length === 0) {
+    galleryGrid.innerHTML = '<div class="gallery-empty">写真がありません</div>';
+    return;
+  }
+  photos.forEach(photo => {
+    const div = document.createElement('div');
+    div.className = 'gallery-thumb';
+    const img = document.createElement('img');
+    img.src = photo.public_url;
+    img.alt = photo.description || photo.category;
+    img.loading = 'lazy';
+    img.addEventListener('click', () => openLightbox(photo));
+    div.appendChild(img);
+    galleryGrid.appendChild(div);
+  });
+}
+
+function openLightbox(photo) {
+  lightboxImg.src = photo.public_url;
+  const parts = [photo.category, photo.description, photo.filename].filter(Boolean);
+  lightboxInfo.textContent = parts.join('　|　');
+  lightbox.classList.add('open');
+}
+
+lightboxClose.addEventListener('click', () => lightbox.classList.remove('open'));
+lightbox.addEventListener('click', e => { if (e.target === lightbox) lightbox.classList.remove('open'); });
+
+async function loadGallery() {
+  galleryGrid.innerHTML = '<div class="gallery-loading">読み込み中…</div>';
+  try {
+    galleryPhotos = await sbFetchPhotos();
+    renderFilter();
+    renderGrid();
+  } catch(e) {
+    galleryGrid.innerHTML = `<div class="gallery-empty">読み込みエラー: ${e.message}</div>`;
+  }
+}
+
+function showUpload() {
+  uploadContent.style.display = '';
+  gallerySection.style.display = 'none';
+  tabGallery.classList.remove('active');
+}
+
+tabGallery.addEventListener('click', () => {
+  [tabSelect, tabCamera].forEach(t => t.classList.remove('active'));
+  tabGallery.classList.add('active');
+  uploadContent.style.display = 'none';
+  gallerySection.style.display = 'block';
+  stopCamera();
+  loadGallery();
+});
+
+tabSelect.addEventListener('click', showUpload);
+tabCamera.addEventListener('click', showUpload);
 </script>
 <script>
 if ('serviceWorker' in navigator) {
